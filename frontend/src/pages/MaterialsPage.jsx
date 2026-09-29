@@ -2,28 +2,46 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 
-export default function MenuPage({ user, onLogout }) {
-  const [categories, setCategories] = useState([]);
-  const [items, setItems] = useState([]);
-  const [form, setForm] = useState({ category_id: '', item_code: '', item_name: '', base_price: '', description: '' });
+export default function MaterialsPage({ user, onLogout }) {
+  const [materials, setMaterials] = useState([]);
+  const [form, setForm] = useState({
+    material_code: '',
+    material_name: '',
+    unit: 'kg',
+    current_quantity: '',
+    unit_price: '',
+  });
 
-  const load = async () => {
-    const { data } = await api.get('/stores');
-    setCategories(data.categories || []);
-    setItems(data.items || []);
+  const loadMaterials = async () => {
+    try {
+      const { data } = await api.get('/materials');
+      setMaterials(data || []);
+    } catch (error) {
+      console.error('Failed to load materials', error);
+    }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    loadMaterials();
+  }, []);
 
   const submit = async (e) => {
     e.preventDefault();
-    await api.post('/stores/items', {
-      ...form,
-      category_id: Number(form.category_id),
-      base_price: Number(form.base_price),
-    });
-    setForm({ category_id: '', item_code: '', item_name: '', base_price: '', description: '' });
-    load();
+
+    try {
+      await api.post('/materials', {
+        material_code: form.material_code,
+        material_name: form.material_name,
+        unit: form.unit,
+        current_quantity: Number(form.current_quantity || 0),
+        unit_price: Number(form.unit_price || 0),
+      });
+
+      setForm({ material_code: '', material_name: '', unit: 'kg', current_quantity: '', unit_price: '' });
+      loadMaterials();
+    } catch (error) {
+      console.error('Could not create material', error);
+    }
   };
 
   return (
@@ -44,43 +62,42 @@ export default function MenuPage({ user, onLogout }) {
       <main className="content">
         <header className="topbar">
           <div>
-            <h1>Menu Management</h1>
-            <p>Maintain menu items and categories</p>
+            <h1>Inventory</h1>
+            <p>Materials and stock tracking</p>
           </div>
         </header>
 
         <div className="two-col">
           <section className="card">
-            <h3>Add Item</h3>
+            <h3>Add material</h3>
             <form className="stack-form" onSubmit={submit}>
-              <select value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })}>
-                <option value="">Select category</option>
-                {categories.map((cat) => <option key={cat.id} value={cat.id}>{cat.category_name}</option>)}
-              </select>
-              <input placeholder="Item code" value={form.item_code} onChange={(e) => setForm({ ...form, item_code: e.target.value })} />
-              <input placeholder="Item name" value={form.item_name} onChange={(e) => setForm({ ...form, item_name: e.target.value })} />
-              <input type="number" placeholder="Price" value={form.base_price} onChange={(e) => setForm({ ...form, base_price: e.target.value })} />
-              <textarea placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-              <button className="primary-button" type="submit">Add item</button>
+              <input placeholder="Material code" value={form.material_code} onChange={(e) => setForm({ ...form, material_code: e.target.value })} />
+              <input placeholder="Material name" value={form.material_name} onChange={(e) => setForm({ ...form, material_name: e.target.value })} />
+              <input placeholder="Unit" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} />
+              <input type="number" placeholder="Current quantity" value={form.current_quantity} onChange={(e) => setForm({ ...form, current_quantity: e.target.value })} />
+              <input type="number" placeholder="Unit price" value={form.unit_price} onChange={(e) => setForm({ ...form, unit_price: e.target.value })} />
+              <button type="submit" className="primary-button">Add material</button>
             </form>
           </section>
 
           <section className="card">
-            <h3>Menu Items</h3>
+            <h3>Material list</h3>
             <table>
               <thead>
                 <tr>
                   <th>Code</th>
                   <th>Name</th>
-                  <th>Price</th>
+                  <th>Qty</th>
+                  <th>Unit</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
+                {materials.map((item) => (
                   <tr key={item.id}>
-                    <td>{item.item_code}</td>
-                    <td>{item.item_name}</td>
-                    <td>{Number(item.base_price).toLocaleString()} VND</td>
+                    <td>{item.material_code}</td>
+                    <td>{item.material_name}</td>
+                    <td>{Number(item.current_quantity || 0)}</td>
+                    <td>{item.unit}</td>
                   </tr>
                 ))}
               </tbody>

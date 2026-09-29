@@ -2,15 +2,27 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 
-export default function OrdersPage({ user, onLogout }) {
-  const [orders, setOrders] = useState([]);
+export default function ReportsPage({ user, onLogout }) {
+  const [summary, setSummary] = useState({ orderCount: 0, revenue: 0, materialCount: 0, itemCount: 0, tableCount: 0 });
 
-  const load = async () => {
-    const { data } = await api.get('/orders');
-    setOrders(data);
-  };
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const { data } = await api.get('/reports/summary');
+        setSummary({
+          orderCount: Number(data?.orderCount || 0),
+          revenue: Number(data?.revenue || 0),
+          materialCount: Number(data?.materialCount || 0),
+          itemCount: Number(data?.itemCount || 0),
+          tableCount: Number(data?.tableCount || 0),
+        });
+      } catch (error) {
+        console.error('Failed to load report summary', error);
+      }
+    };
 
-  useEffect(() => { load(); }, []);
+    load();
+  }, []);
 
   return (
     <div className="page-shell">
@@ -30,32 +42,32 @@ export default function OrdersPage({ user, onLogout }) {
       <main className="content">
         <header className="topbar">
           <div>
-            <h1>Orders</h1>
-            <p>View and track all orders</p>
+            <h1>Reports</h1>
+            <p>Restaurant performance overview</p>
           </div>
         </header>
 
-        <section className="card">
-          <table>
-            <thead>
-              <tr>
-                <th>Order #</th>
-                <th>Status</th>
-                <th>Total</th>
-                <th>Items</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((order) => (
-                <tr key={order.id}>
-                  <td>{order.order_number}</td>
-                  <td>{order.status}</td>
-                  <td>{Number(order.total || 0).toLocaleString()} VND</td>
-                  <td>{(order.items || []).length}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <section className="stats-grid">
+          <div className="stat-card">
+            <span>Total Orders</span>
+            <strong>{summary.orderCount}</strong>
+          </div>
+          <div className="stat-card">
+            <span>Revenue</span>
+            <strong>{summary.revenue.toLocaleString()} VND</strong>
+          </div>
+          <div className="stat-card">
+            <span>Materials</span>
+            <strong>{summary.materialCount}</strong>
+          </div>
+          <div className="stat-card">
+            <span>Menu Items</span>
+            <strong>{summary.itemCount}</strong>
+          </div>
+          <div className="stat-card">
+            <span>Tables</span>
+            <strong>{summary.tableCount}</strong>
+          </div>
         </section>
       </main>
     </div>

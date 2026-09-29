@@ -2,56 +2,53 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 
-export default function POSPage({ user, onLogout }) {
-  const [tables, setTables] = useState([]);
-  const [menu, setMenu] = useState([]);
-  const [selectedTable, setSelectedTable] = useState('');
-  const [cart, setCart] = useState([]);
-  const [message, setMessage] = useState('');
+export default function MenuPage({ user, onLogout }) {
+  const [categories, setCategories] = useState([]);
+  const [items, setItems] = useState([]);
+  const [form, setForm] = useState({
+    category_id: '',
+    item_code: '',
+    item_name: '',
+    base_price: '',
+    description: '',
+  });
+
+  const loadMenu = async () => {
+    try {
+      const { data } = await api.get('/stores');
+      setCategories(data.categories || []);
+      setItems(data.items || []);
+    } catch (error) {
+      console.error('Failed to load menu', error);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      const [tablesRes, menuRes] = await Promise.all([api.get('/tables'), api.get('/stores')]);
-      setTables(tablesRes.data);
-      setMenu(menuRes.data?.items || []);
-      if (tablesRes.data[0]) setSelectedTable(String(tablesRes.data[0].id));
-    };
-
-    load();
+    loadMenu();
   }, []);
 
-  const addToCart = (item) => {
-    setCart((current) => {
-      const existing = current.find((row) => row.menu_item_id === item.id);
-      if (existing) {
-        return current.map((row) => row.menu_item_id === item.id ? { ...row, quantity: row.quantity + 1 } : row);
-      }
-      return [...current, { menu_item_id: item.id, item_name: item.item_name, quantity: 1, unit_price: item.base_price }];
-    });
-  };
-
-  const updateQty = (menu_item_id, change) => {
-    setCart((current) => current.map((row) => row.menu_item_id === menu_item_id ? { ...row, quantity: Math.max(0, row.quantity + change) } : row).filter((row) => row.quantity > 0));
-  };
-
-  const total = cart.reduce((sum, row) => sum + row.quantity * row.unit_price, 0);
-
-  const submitOrder = async () => {
-    if (!selectedTable || cart.length === 0) {
-      setMessage('Please choose a table and at least one dish.');
-      return;
-    }
+  const submit = async (e) => {
+    e.preventDefault();
 
     try {
-      await api.post('/orders', {
-        table_id: Number(selectedTable),
-        notes: 'Created from POS',
-        items: cart.map((item) => ({ menu_item_id: item.menu_item_id, quantity: item.quantity, unit_price: item.unit_price })),
+      await api.post('/stores/items', {
+        category_id: Number(form.category_id),
+        item_code: form.item_code,
+        item_name: form.item_name,
+        base_price: Number(form.base_price || 0),
+        description: form.description,
       });
-      setMessage('Order created successfully!');
-      setCart([]);
+
+      setForm({
+        category_id: '',
+        item_code: '',
+        item_name: '',
+        base_price: '',
+        description: '',
+      });
+      loadMenu();
     } catch (error) {
-      setMessage(error?.response?.data?.message || 'Unable to create order.');
+      console.error('Could not create menu item', error);
     }
   };
 
@@ -73,60 +70,50 @@ export default function POSPage({ user, onLogout }) {
       <main className="content">
         <header className="topbar">
           <div>
-            <h1>Point of Sale</h1>
-            <p>{user.full_name || user.username}</p>
+            <h1>Menu Management</h1>
+            <p>Create and maintain menu items</p>
           </div>
         </header>
 
-        <div className="pos-layout">
-          <section className="card pos-menu">
-            <h3>Menu</h3>
-            <div className="select-wrap">
-              <label>Table</label>
-              <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}>
-                {tables.map((table) => (
-                  <option key={table.id} value={table.id}>{table.table_name}</option>
+        <div className="two-col">
+          <section className="card">
+            <h3>Add item</h3>
+            <form className="stack-form" onSubmit={submit}>
+              <select value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })}>
+                <option value="">Select category</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.category_name}</option>
                 ))}
               </select>
-            </div>
 
-            <div className="menu-grid">
-              {menu.map((item) => (
-                <button key={item.id} className="menu-item" onClick={() => addToCart(item)}>
-                  <strong>{item.item_name}</strong>
-                  <span>{Number(item.base_price).toLocaleString()} VND</span>
-                </button>
-              ))}
-            </div>
+              <input placeholder="Item code" value={form.item_code} onChange={(e) => setForm({ ...form, item_code: e.target.value })} />
+              <input placeholder="Item name" value={form.item_name} onChange={(e) => setForm({ ...form, item_name: e.target.value })} />
+              <input type="number" placeholder="Price" value={form.base_price} onChange={(e) => setForm({ ...form, base_price: e.target.value })} />
+              <textarea placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              <button type="submit" className="primary-button">Add item</button>
+            </form>
           </section>
 
-          <section className="card cart-panel">
-            <h3>Current Order</h3>
-            {cart.length === 0 ? (
-              <p>No items selected.</p>
-            ) : (
-              <div className="cart-list">
-                {cart.map((item) => (
-                  <div key={item.menu_item_id} className="cart-row">
-                    <span>{item.item_name}</span>
-                    <div className="qty-controls">
-                      <button onClick={() => updateQty(item.menu_item_id, -1)}>-</button>
-                      <span>{item.quantity}</span>
-                      <button onClick={() => updateQty(item.menu_item_id, 1)}>+</button>
-                    </div>
-                    <strong>{(item.quantity * item.unit_price).toLocaleString()} VND</strong>
-                  </div>
+          <section className="card">
+            <h3>Current menu</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Name</th>
+                  <th>Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.item_code}</td>
+                    <td>{item.item_name}</td>
+                    <td>{Number(item.base_price || 0).toLocaleString()} VND</td>
+                  </tr>
                 ))}
-              </div>
-            )}
-
-            <div className="total-line">
-              <span>Total</span>
-              <strong>{total.toLocaleString()} VND</strong>
-            </div>
-
-            {message && <div className="info-box">{message}</div>}
-            <button className="primary-button" onClick={submitOrder}>Create Order</button>
+              </tbody>
+            </table>
           </section>
         </div>
       </main>

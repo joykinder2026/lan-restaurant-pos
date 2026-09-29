@@ -2,31 +2,96 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 
-export default function DashboardPage({ user, onLogout }) {
-  const [stats, setStats] = useState({ orders: 0, tables: 0, materials: 0, items: 0 });
-  const [orders, setOrders] = useState([]);
+export default function POSPage({ user, onLogout }) {
+  const [tables, setTables] = useState([]);
+  const [menuItems, setMenuItems] = useState([]);
+  const [selectedTable, setSelectedTable] = useState('');
+  const [cart, setCart] = useState([]);
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
     const load = async () => {
-      const [ordersRes, tablesRes, matsRes, menuRes] = await Promise.all([
-        api.get('/orders'),
-        api.get('/tables'),
-        api.get('/materials'),
-        api.get('/stores'),
-      ]);
+      try {
+        const [tablesRes, menuRes] = await Promise.all([
+          api.get('/tables'),
+          api.get('/stores')
+        ]);
 
-      const menuItems = menuRes.data?.items || [];
-      setStats({
-        orders: ordersRes.data.length,
-        tables: tablesRes.data.length,
-        materials: matsRes.data.length,
-        items: menuItems.length,
-      });
-      setOrders(ordersRes.data.slice(0, 5));
+        const items = menuRes.data?.items || [];
+        setTables(tablesRes.data || []);
+        setMenuItems(items);
+
+        if ((tablesRes.data || [])[0]) {
+          setSelectedTable(String((tablesRes.data || [])[0].id));
+        }
+      } catch (error) {
+        console.error('Failed to load POS data', error);
+      }
     };
 
     load();
   }, []);
+
+  const addToCart = (item) => {
+    setCart((current) => {
+      const existing = current.find((row) => row.menu_item_id === item.id);
+      if (existing) {
+        return current.map((row) =>
+          row.menu_item_id === item.id
+            ? { ...row, quantity: row.quantity + 1 }
+            : row
+        );
+      }
+
+      return [
+        ...current,
+        {
+          menu_item_id: item.id,
+          item_name: item.item_name,
+          quantity: 1,
+          unit_price: Number(item.base_price || 0),
+        },
+      ];
+    });
+  };
+
+  const updateQty = (menuItemId, delta) => {
+    setCart((current) =>
+      current
+        .map((row) =>
+          row.menu_item_id === menuItemId
+            ? { ...row, quantity: Math.max(0, row.quantity + delta) }
+            : row
+        )
+        .filter((row) => row.quantity > 0)
+    );
+  };
+
+  const total = cart.reduce((sum, row) => sum + row.quantity * row.unit_price, 0);
+
+  const submitOrder = async () => {
+    if (!selectedTable || cart.length === 0) {
+      setMessage('Please select a table and add at least one item.');
+      return;
+    }
+
+    try {
+      await api.post('/orders', {
+        table_id: Number(selectedTable),
+        notes: 'Created from POS',
+        items: cart.map((item) => ({
+          menu_item_id: item.menu_item_id,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+        })),
+      });
+
+      setMessage('Order created successfully.');
+      setCart([]);
+    } catch (error) {
+      setMessage(error?.response?.data?.message || 'Unable to create order.');
+    }
+  };
 
   return (
     <div className="page-shell">
@@ -46,53 +111,64 @@ export default function DashboardPage({ user, onLogout }) {
       <main className="content">
         <header className="topbar">
           <div>
-            <h1>Welcome, {user.full_name || user.username}</h1>
-            <p>{user.role} • {user.store_name}</p>
+            <h1>Point of Sale</h1>
+            <p>{user.full_name || user.username}</p>
           </div>
         </header>
 
-        <section className="stats-grid">
-          <div className="stat-card">
-            <span>Total Orders</span>
-            <strong>{stats.orders}</strong>
-          </div>
-          <div className="stat-card">
-            <span>Tables</span>
-            <strong>{stats.tables}</strong>
-          </div>
-          <div className="stat-card">
-            <span>Materials</span>
-            <strong>{stats.materials}</strong>
-          </div>
-          <div className="stat-card">
-            <span>Menu Items</span>
-            <strong>{stats.items}</strong>
-          </div>
-        </section>
+        <div className="pos-layout">
+          <section className="card pos-menu">
+            <h3>Menu</h3>
 
-        <section className="card">
-          <h3>Recent Orders</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Status</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.length === 0 ? (
-                <tr><td colSpan="3">No orders yet.</td></tr>
-              ) : orders.map((order) => (
-                <tr key={order.id}>
-                  <td>{order.order_number}</td>
-                  <td>{order.status}</td>
-                  <td>{Number(order.total || 0).toLocaleString()} VND</td>
-                </tr>
+            <div className="select-wrap">
+              <label>Table</label>
+              <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}>
+                {tables.map((table) => (
+                  <option key={table.id} value={table.id}>{table.table_name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="menu-grid">
+              {menuItems.map((item) => (
+                <button key={item.id} className="menu-item" onClick={() => addToCart(item)}>
+                  <strong>{item.item_name}</strong>
+                  <span>{Number(item.base_price || 0).toLocaleString()} VND</span>
+                </button>
               ))}
-            </tbody>
-          </table>
-        </section>
+            </div>
+          </section>
+
+          <section className="card cart-panel">
+            <h3>Current Order</h3>
+
+            {cart.length === 0 ? (
+              <p>No items selected.</p>
+            ) : (
+              <div className="cart-list">
+                {cart.map((item) => (
+                  <div key={item.menu_item_id} className="cart-row">
+                    <span>{item.item_name}</span>
+                    <div className="qty-controls">
+                      <button type="button" onClick={() => updateQty(item.menu_item_id, -1)}>-</button>
+                      <span>{item.quantity}</span>
+                      <button type="button" onClick={() => updateQty(item.menu_item_id, 1)}>+</button>
+                    </div>
+                    <strong>{(item.quantity * item.unit_price).toLocaleString()} VND</strong>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="total-line">
+              <span>Total</span>
+              <strong>{total.toLocaleString()} VND</strong>
+            </div>
+
+            {message && <div className="info-box">{message}</div>}
+            <button type="button" className="primary-button" onClick={submitOrder}>Create Order</button>
+          </section>
+        </div>
       </main>
     </div>
   );
