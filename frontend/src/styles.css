@@ -1,0 +1,72 @@
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import api from '../api';
+
+export default function ReportsPage({ user, onLogout }) {
+  const [summary, setSummary] = useState({ totalOrders: 0, totalRevenue: 0, totalMaterials: 0, itemCount: 0 });
+
+  useEffect(() => {
+    const load = async () => {
+      const [ordersRes, materialsRes, menuRes] = await Promise.all([
+        api.get('/orders'),
+        api.get('/materials'),
+        api.get('/stores')
+      ]);
+
+      const totalRevenue = (ordersRes.data || []).reduce((sum, order) => sum + Number(order.total || 0), 0);
+      setSummary({
+        totalOrders: (ordersRes.data || []).length,
+        totalRevenue,
+        totalMaterials: (materialsRes.data || []).length,
+        itemCount: (menuRes.data?.items || []).length,
+      });
+    };
+
+    load();
+  }, []);
+
+  return (
+    <div className="page-shell">
+      <aside className="sidebar">
+        <h2>LAN POS</h2>
+        <nav>
+          <Link to="/">Dashboard</Link>
+          <Link to="/pos">POS</Link>
+          <Link to="/menu">Menu</Link>
+          <Link to="/materials">Materials</Link>
+          <Link to="/orders">Orders</Link>
+          <Link to="/reports">Reports</Link>
+        </nav>
+        <button className="logout-button" onClick={onLogout}>Logout</button>
+      </aside>
+
+      <main className="content">
+        <header className="topbar">
+          <div>
+            <h1>Reports</h1>
+            <p>Operational snapshot</p>
+          </div>
+        </header>
+
+        <section className="stats-grid">
+          <div className="stat-card">
+            <span>Total Orders</span>
+            <strong>{summary.totalOrders}</strong>
+          </div>
+          <div className="stat-card">
+            <span>Revenue</span>
+            <strong>{summary.totalRevenue.toLocaleString()} VND</strong>
+          </div>
+          <div className="stat-card">
+            <span>Materials</span>
+            <strong>{summary.totalMaterials}</strong>
+          </div>
+          <div className="stat-card">
+            <span>Menu Items</span>
+            <strong>{summary.itemCount}</strong>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
